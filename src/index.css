@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Custom Gold Scale for a Premium, Luxury Fitness Hub Aesthetic */
+  --color-gold-50: #fbf9ec;
+  --color-gold-100: #f6efa9;
+  --color-gold-200: #edd965;
+  --color-gold-300: #ddbf31;
+  --color-gold-400: #c9aa23;
+  --color-gold-500: #b2911b;
+  --color-gold-600: #937114;
+  --color-gold-700: #745412;
+  --color-gold-800: #553b10;
+  --color-gold-900: #38250b;
+  --color-gold-950: #1f1304;
+
+  /* Accent Bright Yellow for active/energetic accents */
+  --color-energy-yellow: #facc15;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    font-family: var(--font-sans);
+    background-color: #0c0c0e;
+    color: #f3f4f6;
+  }
+}
+
+/* Custom golden gradients and glow styles */
+.text-gradient-gold {
+  background: linear-gradient(135deg, #fef08a 0%, #ca8a04 50%, #facc15 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.bg-gradient-gold {
+  background: linear-gradient(135deg, #facc15 0%, #b2911b 50%, #745412 100%);
+}
+
+.border-gradient-gold {
+  border-image: linear-gradient(135deg, #facc15, #745412) 1;
+}
+
+.shadow-gold-heavy {
+  box-shadow: 0 10px 30px -10px rgba(202, 138, 4, 0.3);
+}
+
+.shadow-gold-glow {
+  box-shadow: 0 0 15px 1px rgba(250, 204, 21, 0.15);
+}

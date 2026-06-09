@@ -1,0 +1,137 @@
+{
+  "entities": {
+    "membership_signup": {
+      "title": "Membership Signup",
+      "description": "Information about clients who secured a mid-year promotional membership spot.",
+      "type": "object",
+      "properties": {
+        "fullName": {
+          "type": "string",
+          "description": "Full legal name of the client"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address of the client"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Cebu phone number of the client"
+        },
+        "tierId": {
+          "type": "string",
+          "description": "Identifier of the membership tier (e.g., 12month, 6month)"
+        },
+        "tierName": {
+          "type": "string",
+          "description": "Human-friendly tier name"
+        },
+        "price": {
+          "type": "number",
+          "description": "Locked-in promotional rate price of the tier"
+        },
+        "ticketId": {
+          "type": "string",
+          "description": "Secure 6-character reference code (e.g. RISE-4912)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "claimed", "canceled"],
+          "description": "Whether the client has claimed their welcome gifts at Salinas Drive"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "The exact registration timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "The exact modification timestamp"
+        }
+      },
+      "required": ["fullName", "email", "phone", "tierId", "ticketId", "status", "createdAt"]
+    },
+    "class_reservation": {
+      "title": "Class Reservation",
+      "description": "Information about group class roster signups.",
+      "type": "object",
+      "properties": {
+        "fullName": {
+          "type": "string",
+          "description": "Legal name of the participant"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact number"
+        },
+        "classId": {
+          "type": "string",
+          "description": "Identifier of the class (sc1, sc2, sc3, sc4)"
+        },
+        "className": {
+          "type": "string",
+          "description": "Name of the group class (e.g., Step Up Aerobics Dance)"
+        },
+        "classTime": {
+          "type": "string",
+          "description": "Timing schedule (e.g., Monday, Wednesday, Friday 6:00 PM)"
+        },
+        "instructor": {
+          "type": "string",
+          "description": "Lead Coach instructor name"
+        },
+        "ticketId": {
+          "type": "string",
+          "description": "Generative reference code"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["reserved", "checked-in", "canceled"],
+          "description": "Roster spot claim status"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["fullName", "phone", "classId", "className", "ticketId", "status", "createdAt"]
+    },
+    "contact_message": {
+      "title": "Contact Message",
+      "description": "Support messages sent from the landing footer directly.",
+      "type": "object",
+      "properties": {
+        "fullName": {
+          "type": "string",
+          "description": "Name of the sender or default placeholder"
+        },
+        "email": {
+          "type": "string",
+          "description": "Contact channels or emails"
+        },
+        "message": {
+          "type": "string",
+          "description": "Message description contents"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["message", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/membership_signups/{signupId}": {
+      "schema": "membership_signup",
+      "description": "Secured Mid-Year 2026 Promo membership registrations."
+    },
+    "/class_reservations/{reservationId}": {
+      "schema": "class_reservation",
+      "description": "Group class spot reservation documents list."
+    },
+    "/contact_messages/{messageId}": {
+      "schema": "contact_message",
+      "description": "Direct user feedback and support queries from Cebu Lahug."
+    }
+  }
+}

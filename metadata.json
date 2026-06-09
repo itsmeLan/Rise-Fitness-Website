@@ -1,0 +1,6 @@
+{
+  "name": "Rise Fitness Hub",
+  "description": "Premium, high-energy, and motivational landing page with interactive signup offers, group class views, and local persistence tools for Rise Fitness Hub, located in Lahug, Cebu City.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
