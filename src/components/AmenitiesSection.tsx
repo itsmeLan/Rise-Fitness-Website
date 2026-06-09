@@ -1,8 +1,8 @@
 import { Wind, Flame, Music, Sparkles, Droplet, Wifi, Shield } from 'lucide-react';
 import { AMENITIES } from '../data';
+import saunaImgUrl from '../assets/images/sauna_recovery_1780969372274.png';
 
 export default function AmenitiesSection() {
-  const saunaImgUrl = "/src/assets/images/sauna_recovery_1780969372274.png";
 
   const getIcon = (iconName: string) => {
     switch (iconName) {

@@ -1,12 +1,12 @@
 import { ArrowRight, MapPin, Sparkles, Trophy, ShieldCheck, HeartPulse } from 'lucide-react';
 import { motion } from 'motion/react';
+import heroImgUrl from '../assets/images/gym_hero_bg_1780969354186.png';
 
 interface HeroSectionProps {
   onClaimClick: () => void;
 }
 
 export default function HeroSection({ onClaimClick }: HeroSectionProps) {
-  const heroImgUrl = "/src/assets/images/gym_hero_bg_1780969354186.png";
 
   return (
     <section
