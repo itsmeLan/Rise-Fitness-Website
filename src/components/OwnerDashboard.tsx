@@ -39,6 +39,148 @@ interface OwnerDashboardProps {
   onClose: () => void;
 }
 
+function SubscriptionCountdown({ item }: { item: SignupItem }) {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  if (item.status !== 'claimed') {
+    return (
+      <div className="text-gray-500 font-mono text-[10px] italic">
+        {item.status === 'pending' ? '⏳ Awaiting payment check-in' : '🚫 Voucher canceled'}
+      </div>
+    );
+  }
+
+  const start = item.startDate ? new Date(item.startDate) : new Date(item.createdAt);
+  let monthsToAdd = 1;
+  if (item.tierId === '12month') monthsToAdd = 12;
+  else if (item.tierId === '6month') monthsToAdd = 6;
+  else if (item.tierId === '3month') monthsToAdd = 3;
+  else if (item.tierId === 'monthly') monthsToAdd = 1;
+
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + monthsToAdd);
+
+  const totalMs = end.getTime() - start.getTime();
+  const elapsedMs = now.getTime() - start.getTime();
+  const leftMs = end.getTime() - now.getTime();
+  const isExpired = leftMs <= 0;
+
+  // Percentage of time elapsed (clamped between 0 and 100)
+  const percentElapsed = Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100));
+
+  const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
+  const formattedStart = start.toLocaleDateString('en-US', options);
+  const formattedEnd = end.toLocaleDateString('en-US', options);
+
+  let countdownText = '';
+  if (isExpired) {
+    countdownText = 'Expired ⚠️';
+  } else {
+    // Precise calendar countdown
+    let months = 0;
+    let testDate = new Date(now);
+    
+    // Keep adding months
+    while (true) {
+      let nextDate = new Date(testDate);
+      nextDate.setMonth(nextDate.getMonth() + 1);
+      if (nextDate <= end) {
+        testDate = nextDate;
+        months++;
+      } else {
+        break;
+      }
+    }
+
+    // Keep adding days
+    let days = 0;
+    while (true) {
+      let nextDate = new Date(testDate);
+      nextDate.setDate(nextDate.getDate() + 1);
+      if (nextDate <= end) {
+        testDate = nextDate;
+        days++;
+      } else {
+        break;
+      }
+    }
+
+    // Remainder hours, minutes, seconds
+    let remainingMs = end.getTime() - testDate.getTime();
+    const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+    remainingMs %= (1000 * 60 * 60);
+    const minutes = Math.floor(remainingMs / (1000 * 60));
+    remainingMs %= (1000 * 60);
+    const seconds = Math.floor(remainingMs / 1000);
+
+    // Build the precise readable parts
+    const parts: string[] = [];
+    if (months > 0) {
+      parts.push(`${months} month${months !== 1 ? 's' : ''}`);
+    }
+    if (days > 0) {
+      parts.push(`${days} day${days !== 1 ? 's' : ''}`);
+    }
+    if (hours > 0 || parts.length > 0) {
+      parts.push(`${hours} hour${hours !== 1 ? 's' : ''}`);
+    }
+    if (minutes > 0 || parts.length > 0) {
+      parts.push(`${minutes} minute${minutes !== 1 ? 's' : ''}`);
+    }
+    parts.push(`${seconds} second${seconds !== 1 ? 's' : ''}`);
+
+    // Join parts beautifully: e.g., "3 months, 2 days, 12 hours, 2 minutes and 59 seconds"
+    if (parts.length > 1) {
+      const lastPart = parts.pop();
+      countdownText = parts.join(', ') + ' and ' + lastPart + ' left';
+    } else {
+      countdownText = parts[0] + ' left';
+    }
+  }
+
+  return (
+    <div className="space-y-1.5 max-w-[280px]">
+      <div className="flex items-center justify-between text-[11px] font-mono">
+        <span className={`font-semibold inline-flex items-center gap-1 ${isExpired ? 'text-red-400 animate-pulse' : 'text-green-400'}`}>
+          {isExpired ? (
+            <AlertTriangle className="w-3.5 h-3.5" />
+          ) : (
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping" />
+          )}
+          <span>Live Countdown</span>
+        </span>
+        <span className="text-gray-500 font-normal">
+          {Math.round(percentElapsed)}% elapsed
+        </span>
+      </div>
+
+      <div className={`font-mono text-[10px] leading-relaxed tracking-tight ${isExpired ? 'text-red-400 font-bold' : 'text-energy-yellow'}`} style={{ textShadow: '0 0 8px rgba(228, 208, 10, 0.1)' }}>
+        {countdownText}
+      </div>
+      
+      {/* Beautiful progress bar */}
+      <div className="w-full bg-black h-1.5 rounded-full overflow-hidden border border-zinc-800">
+        <div 
+          className={`h-full rounded-full transition-all duration-300 ${isExpired ? 'bg-red-500' : 'bg-green-500'}`}
+          style={{ width: `${percentElapsed}%` }}
+        />
+      </div>
+      
+      <div className="flex justify-between text-[9px] font-mono text-gray-500">
+        <span>{formattedStart}</span>
+        <span>{formattedEnd}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function OwnerDashboard({ isOpen, onClose }: OwnerDashboardProps) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [passcode, setPasscode] = useState('');
@@ -635,40 +777,7 @@ export default function OwnerDashboard({ isOpen, onClose }: OwnerDashboardProps)
                                   </div>
                                 </td>
                                 <td className="p-4">
-                                  {item.status === 'claimed' ? (
-                                    <div className="space-y-1 max-w-[200px]">
-                                      <div className="flex items-center justify-between text-[11px] font-mono">
-                                        <span className={`font-bold inline-flex items-center gap-1 ${details.isExpired ? 'text-red-400 animate-pulse' : 'text-green-400'}`}>
-                                          {details.isExpired ? (
-                                            <AlertTriangle className="w-3 h-3" />
-                                          ) : (
-                                            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping" />
-                                          )}
-                                          {details.label}
-                                        </span>
-                                        <span className="text-gray-500 font-normal">
-                                          {Math.round(details.percentElapsed)}% elapsed
-                                        </span>
-                                      </div>
-                                      
-                                      {/* Beautiful progress bar */}
-                                      <div className="w-full bg-black h-1.5 rounded-full overflow-hidden border border-zinc-800">
-                                        <div 
-                                          className={`h-full rounded-full transition-all duration-300 ${details.isExpired ? 'bg-red-500' : 'bg-green-500'}`}
-                                          style={{ width: `${details.percentElapsed}%` }}
-                                        />
-                                      </div>
-                                      
-                                      <div className="flex justify-between text-[9px] font-mono text-gray-500">
-                                        <span>{details.formattedStart}</span>
-                                        <span>{details.formattedEnd}</span>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="text-gray-500 font-mono text-[10px] italic">
-                                      {item.status === 'pending' ? '⏳ Awaiting payment check-in' : '🚫 Voucher canceled'}
-                                    </div>
-                                  )}
+                                  <SubscriptionCountdown item={item} />
                                 </td>
                                 <td className="p-4">
                                   <span className={`px-2 py-1 rounded font-mono text-[10px] font-bold uppercase border ${
