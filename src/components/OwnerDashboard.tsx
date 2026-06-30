@@ -1,8 +1,9 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, Fragment } from 'react';
 import { db, auth, signInWithGoogle, logOut } from '../lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { Shield, Sparkles, LogOut, Trash2, Check, X, RefreshCw, Layers, Users, TrendingUp, DollarSign } from 'lucide-react';
+import { Shield, Sparkles, LogOut, Trash2, Check, X, RefreshCw, Layers, Users, TrendingUp, DollarSign, Calendar, Clock, RotateCcw, ArrowRight, AlertTriangle } from 'lucide-react';
+import { MEMBERSHIP_TIERS } from '../data';
 
 interface SignupItem {
   id: string;
@@ -15,6 +16,9 @@ interface SignupItem {
   ticketId: string;
   status: 'pending' | 'claimed' | 'canceled';
   createdAt: string;
+  startDate?: string;
+  renewedAt?: string;
+  renewalCount?: number;
 }
 
 interface ClassReservationItem {
@@ -53,6 +57,12 @@ export default function OwnerDashboard({ isOpen, onClose }: OwnerDashboardProps)
   // Safety Double-Tap Delete Confirmation states (bypasses browser confirm popup blocks)
   const [confirmDeleteSignupId, setConfirmDeleteSignupId] = useState<string | null>(null);
   const [confirmDeleteClassId, setConfirmDeleteClassId] = useState<string | null>(null);
+
+  // Subscription renewal process states
+  const [renewingSignupId, setRenewingSignupId] = useState<string | null>(null);
+  const [renewTierId, setRenewTierId] = useState<string>('');
+  const [renewPrice, setRenewPrice] = useState<number>(0);
+  const [renewStartDate, setRenewStartDate] = useState<string>('');
 
   const triggerToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
@@ -163,14 +173,137 @@ export default function OwnerDashboard({ isOpen, onClose }: OwnerDashboardProps)
     setPermissionError(null);
     setConfirmDeleteSignupId(null);
     setConfirmDeleteClassId(null);
+    setRenewingSignupId(null);
     triggerToast("Signed out. Dev console locked.", "info");
+  };
+
+  // Helper: Format Date to local YYYY-MM-DD
+  const toLocalDateString = (date: Date) => {
+    const offset = date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+    return localDate.toISOString().split('T')[0];
+  };
+
+  // Helper: Calculate remaining duration, expired state, progress %
+  const calculateSubscriptionDetails = (item: SignupItem) => {
+    if (item.status !== 'claimed') {
+      return {
+        isActive: false,
+        isExpired: false,
+        daysTotal: 0,
+        daysLeft: 0,
+        percentElapsed: 0,
+        formattedEnd: 'N/A',
+        formattedStart: 'N/A',
+        label: item.status === 'pending' ? 'Awaiting Payment' : 'Canceled'
+      };
+    }
+
+    const start = item.startDate ? new Date(item.startDate) : new Date(item.createdAt);
+    let monthsToAdd = 1;
+    if (item.tierId === '12month') monthsToAdd = 12;
+    else if (item.tierId === '6month') monthsToAdd = 6;
+    else if (item.tierId === '3month') monthsToAdd = 3;
+    else if (item.tierId === 'monthly') monthsToAdd = 1;
+
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + monthsToAdd);
+
+    const now = new Date();
+    const totalMs = end.getTime() - start.getTime();
+    const elapsedMs = now.getTime() - start.getTime();
+    const leftMs = end.getTime() - now.getTime();
+
+    const daysTotal = Math.max(1, Math.ceil(totalMs / (1000 * 60 * 60 * 24)));
+    const daysLeft = Math.ceil(leftMs / (1000 * 60 * 60 * 24));
+    const isExpired = daysLeft <= 0;
+
+    // Percentage of time elapsed (clamped between 0 and 100)
+    let percentElapsed = Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100));
+
+    const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
+    const formattedStart = start.toLocaleDateString('en-US', options);
+    const formattedEnd = end.toLocaleDateString('en-US', options);
+
+    // Friendly display label
+    let label = '';
+    if (isExpired) {
+      label = 'Expired ⚠️';
+    } else if (daysLeft > 30) {
+      const monthsLeft = Math.floor(daysLeft / 30);
+      const remDays = daysLeft % 30;
+      label = remDays > 0 ? `${monthsLeft}mo ${remDays}d left` : `${monthsLeft}mo left`;
+    } else {
+      label = `${daysLeft}d left`;
+    }
+
+    return {
+      isActive: !isExpired,
+      isExpired,
+      daysTotal,
+      daysLeft: Math.max(0, daysLeft),
+      percentElapsed,
+      formattedEnd,
+      formattedStart,
+      label
+    };
+  };
+
+  // Renew membership subscription
+  const handleRenewSignup = async (
+    id: string,
+    selectedTierId: string,
+    selectedTierName: string,
+    renewalPrice: number,
+    customStartDate: string
+  ) => {
+    try {
+      const docRef = doc(db, 'membership_signups', id);
+      const currentItem = signups.find(s => s.id === id);
+      const newRenewalCount = (currentItem?.renewalCount || 0) + 1;
+
+      const updateData = {
+        status: 'claimed' as const,
+        tierId: selectedTierId,
+        tierName: selectedTierName,
+        price: renewalPrice,
+        startDate: customStartDate,
+        renewedAt: new Date().toISOString(),
+        renewalCount: newRenewalCount,
+        updatedAt: new Date().toISOString()
+      };
+
+      await updateDoc(docRef, updateData);
+      triggerToast(`Successfully renewed "${currentItem?.fullName}" subscription to ${selectedTierName}!`, "success");
+      setRenewingSignupId(null);
+    } catch (error: any) {
+      console.error("Failed to renew membership:", error);
+      const isPermErr = error?.message?.toLowerCase().includes("permission");
+      triggerToast(
+        isPermErr
+          ? "🔒 Permission Denied! Database is secure. Please authenticate via owner Google Account."
+          : "Failed to renew membership in database.",
+        "error"
+      );
+    }
   };
 
   // Modify Membership Status
   const handleUpdateSignupStatus = async (id: string, nextStatus: 'pending' | 'claimed' | 'canceled') => {
     try {
       const docRef = doc(db, 'membership_signups', id);
-      await updateDoc(docRef, { status: nextStatus, updatedAt: new Date().toISOString() });
+      const currentItem = signups.find(s => s.id === id);
+      
+      const updateData: any = { 
+        status: nextStatus, 
+        updatedAt: new Date().toISOString() 
+      };
+
+      if (nextStatus === 'claimed' && !currentItem?.startDate) {
+        updateData.startDate = new Date().toISOString();
+      }
+
+      await updateDoc(docRef, updateData);
       triggerToast(`Member record marked as "${nextStatus}" successfully.`, "success");
     } catch (error: any) {
       console.error("Failed to modify signup status:", error);
@@ -458,84 +591,301 @@ export default function OwnerDashboard({ isOpen, onClose }: OwnerDashboardProps)
                         <tr className="border-b border-zinc-800 text-gray-400 uppercase tracking-wider font-mono text-[10px] bg-black/40">
                           <th className="p-4">Customer Name</th>
                           <th className="p-4">Contact Info</th>
-                          <th className="p-4">Chosen Promo Tier</th>
-                          <th className="p-4">Locked Price</th>
-                          <th className="p-4">Voucher ID</th>
+                          <th className="p-4">Promo Package</th>
+                          <th className="p-4">Value / Price</th>
+                          <th className="p-4">Subscription Tracking</th>
                           <th className="p-4">Voucher Status</th>
                           <th className="p-4 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {signups.map((item) => (
-                          <tr key={item.id} className="border-b border-zinc-800/60 hover:bg-zinc-850/30 transition-colors">
-                            <td className="p-4 font-display font-bold text-white text-[13px]">{item.fullName}</td>
-                            <td className="p-4 space-y-0.5">
-                              <p className="text-gray-300">{item.phone}</p>
-                              <p className="text-gray-500">{item.email}</p>
-                            </td>
-                            <td className="p-4">
-                              <span className="text-gray-300 font-semibold">{item.tierName}</span>
-                            </td>
-                            <td className="p-4 font-mono font-bold text-white">₱{item.price.toLocaleString()}</td>
-                            <td className="p-4">
-                              <span className="font-mono bg-black px-2 py-0.5 rounded border border-zinc-800 text-gold-500 text-[11px] font-bold">
-                                {item.ticketId}
-                              </span>
-                            </td>
-                            <td className="p-4">
-                              <span className={`px-2 py-1 rounded font-mono text-[10px] font-bold uppercase ${
-                                item.status === 'claimed'
-                                  ? 'bg-green-950 text-green-300 border border-green-800/40'
-                                  : item.status === 'canceled'
-                                    ? 'bg-zinc-800 text-gray-500'
-                                    : 'bg-gold-950 text-energy-yellow border border-gold-800/30 animate-pulse'
-                              }`}>
-                                {item.status}
-                              </span>
-                            </td>
-                            <td className="p-4 text-right space-x-1 whitespace-nowrap">
-                              <button
-                                onClick={() => handleUpdateSignupStatus(item.id, 'claimed')}
-                                className="bg-green-950 hover:bg-green-900 border border-green-800/50 p-2 rounded text-green-300 inline-flex items-center cursor-pointer"
-                                title="Mark Claimed (Active Member)"
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleUpdateSignupStatus(item.id, 'canceled')}
-                                className="bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 p-2 rounded text-gray-400 inline-flex items-center cursor-pointer"
-                                title="Cancel Ticket"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                              
-                              {confirmDeleteSignupId === item.id ? (
-                                <span className="inline-flex gap-1 ml-1">
+                        {signups.map((item) => {
+                          const details = calculateSubscriptionDetails(item);
+                          return (
+                            <Fragment key={item.id}>
+                              <tr className="border-b border-zinc-800/60 hover:bg-zinc-850/30 transition-colors">
+                                <td className="p-4 font-display font-bold text-white text-[13px]">{item.fullName}</td>
+                                <td className="p-4 space-y-0.5">
+                                  <p className="text-gray-300">{item.phone}</p>
+                                  <p className="text-gray-500">{item.email}</p>
+                                </td>
+                                <td className="p-4">
+                                  <div className="space-y-1">
+                                    <span className="text-gray-300 font-semibold block">{item.tierName}</span>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-mono bg-black px-1.5 py-0.5 rounded border border-zinc-850 text-gold-500 text-[10px] font-bold">
+                                        {item.ticketId}
+                                      </span>
+                                      {item.renewalCount && item.renewalCount > 0 ? (
+                                        <span className="bg-amber-950/80 text-energy-yellow border border-amber-900 px-1.5 py-0.5 rounded font-mono text-[9px] font-bold uppercase inline-flex items-center gap-0.5 animate-pulse" title={`Renewed ${item.renewalCount} times`}>
+                                          🔄 x{item.renewalCount}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="p-4">
+                                  <div className="space-y-0.5">
+                                    <div className="font-mono font-bold text-white text-[13px]">₱{item.price.toLocaleString()}</div>
+                                    {item.renewedAt && (
+                                      <div className="text-[9px] font-mono text-gray-500" title={new Date(item.renewedAt).toLocaleString()}>
+                                        Renewed {new Date(item.renewedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-4">
+                                  {item.status === 'claimed' ? (
+                                    <div className="space-y-1 max-w-[200px]">
+                                      <div className="flex items-center justify-between text-[11px] font-mono">
+                                        <span className={`font-bold inline-flex items-center gap-1 ${details.isExpired ? 'text-red-400 animate-pulse' : 'text-green-400'}`}>
+                                          {details.isExpired ? (
+                                            <AlertTriangle className="w-3 h-3" />
+                                          ) : (
+                                            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping" />
+                                          )}
+                                          {details.label}
+                                        </span>
+                                        <span className="text-gray-500 font-normal">
+                                          {Math.round(details.percentElapsed)}% elapsed
+                                        </span>
+                                      </div>
+                                      
+                                      {/* Beautiful progress bar */}
+                                      <div className="w-full bg-black h-1.5 rounded-full overflow-hidden border border-zinc-800">
+                                        <div 
+                                          className={`h-full rounded-full transition-all duration-300 ${details.isExpired ? 'bg-red-500' : 'bg-green-500'}`}
+                                          style={{ width: `${details.percentElapsed}%` }}
+                                        />
+                                      </div>
+                                      
+                                      <div className="flex justify-between text-[9px] font-mono text-gray-500">
+                                        <span>{details.formattedStart}</span>
+                                        <span>{details.formattedEnd}</span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="text-gray-500 font-mono text-[10px] italic">
+                                      {item.status === 'pending' ? '⏳ Awaiting payment check-in' : '🚫 Voucher canceled'}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="p-4">
+                                  <span className={`px-2 py-1 rounded font-mono text-[10px] font-bold uppercase border ${
+                                    item.status === 'claimed'
+                                      ? 'bg-green-950/60 text-green-300 border-green-800/40'
+                                      : item.status === 'canceled'
+                                        ? 'bg-zinc-900 text-gray-500 border-zinc-800'
+                                        : 'bg-gold-950/60 text-energy-yellow border-gold-800/30 animate-pulse'
+                                  }`}>
+                                    {item.status}
+                                  </span>
+                                </td>
+                                <td className="p-4 text-right space-x-1 whitespace-nowrap">
+                                  {item.status !== 'claimed' && (
+                                    <button
+                                      onClick={() => handleUpdateSignupStatus(item.id, 'claimed')}
+                                      className="bg-green-950 hover:bg-green-900 border border-green-800/50 p-2 rounded text-green-300 inline-flex items-center cursor-pointer"
+                                      title="Mark Claimed (Active Member)"
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                  
+                                  {item.status === 'claimed' && (
+                                    <button
+                                      onClick={() => {
+                                        setRenewingSignupId(item.id);
+                                        setRenewTierId(item.tierId);
+                                        setRenewPrice(item.price);
+                                        
+                                        if (details.isActive) {
+                                          const start = item.startDate ? new Date(item.startDate) : new Date(item.createdAt);
+                                          let monthsToAdd = 1;
+                                          if (item.tierId === '12month') monthsToAdd = 12;
+                                          else if (item.tierId === '6month') monthsToAdd = 6;
+                                          else if (item.tierId === '3month') monthsToAdd = 3;
+                                          else if (item.tierId === 'monthly') monthsToAdd = 1;
+
+                                          const end = new Date(start);
+                                          end.setMonth(end.getMonth() + monthsToAdd);
+                                          setRenewStartDate(toLocalDateString(end));
+                                        } else {
+                                          setRenewStartDate(toLocalDateString(new Date()));
+                                        }
+                                      }}
+                                      className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 p-2 rounded text-energy-yellow inline-flex items-center cursor-pointer"
+                                      title="Renew / Extend Subscription Offer"
+                                    >
+                                      <RotateCcw className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+
                                   <button
-                                    onClick={() => handleDeleteSignup(item.id)}
-                                    className="bg-red-650 hover:bg-red-600 text-white font-mono text-[9px] font-bold px-2 py-1 rounded shadow-md uppercase transition-all duration-200 cursor-pointer"
+                                    onClick={() => handleUpdateSignupStatus(item.id, 'canceled')}
+                                    className="bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 p-2 rounded text-gray-400 inline-flex items-center cursor-pointer"
+                                    title="Cancel Ticket"
                                   >
-                                    Confirm?
+                                    <X className="w-3.5 h-3.5" />
                                   </button>
-                                  <button
-                                    onClick={() => setConfirmDeleteSignupId(null)}
-                                    className="bg-zinc-850 hover:bg-zinc-800 text-gray-405 font-mono text-[9px] font-bold px-2 py-1 rounded transition-all duration-200 cursor-pointer"
-                                  >
-                                    No
-                                  </button>
-                                </span>
-                              ) : (
-                                <button
-                                  onClick={() => setConfirmDeleteSignupId(item.id)}
-                                  className="bg-zinc-950 hover:bg-red-950 hover:text-red-300 hover:border-red-800 p-2 rounded text-gray-600 border border-zinc-850 inline-flex items-center cursor-pointer"
-                                  title="Delete Document permanently"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                  
+                                  {confirmDeleteSignupId === item.id ? (
+                                    <span className="inline-flex gap-1 ml-1 align-middle">
+                                      <button
+                                        onClick={() => handleDeleteSignup(item.id)}
+                                        className="bg-red-650 hover:bg-red-600 text-white font-mono text-[9px] font-bold px-2 py-1 rounded shadow-md uppercase transition-all duration-200 cursor-pointer"
+                                      >
+                                        Confirm?
+                                      </button>
+                                      <button
+                                        onClick={() => setConfirmDeleteSignupId(null)}
+                                        className="bg-zinc-850 hover:bg-zinc-800 text-gray-405 font-mono text-[9px] font-bold px-2 py-1 rounded transition-all duration-200 cursor-pointer"
+                                      >
+                                        No
+                                      </button>
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => setConfirmDeleteSignupId(item.id)}
+                                      className="bg-zinc-950 hover:bg-red-950 hover:text-red-300 hover:border-red-800 p-2 rounded text-gray-600 border border-zinc-850 inline-flex items-center cursor-pointer"
+                                      title="Delete Document permanently"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+
+                              {renewingSignupId === item.id && (
+                                <tr className="bg-zinc-950 border-b border-zinc-800">
+                                  <td colSpan={7} className="p-4 sm:p-6">
+                                    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 space-y-4 max-w-2xl mx-auto shadow-2xl relative overflow-hidden">
+                                      <div className="absolute right-0 top-0 w-24 h-24 bg-energy-yellow/5 rounded-full blur-2xl pointer-events-none" />
+                                      <div className="flex items-center gap-2 pb-2 border-b border-zinc-800">
+                                        <RotateCcw className="w-4 h-4 text-energy-yellow animate-spin" style={{ animationDuration: '3s' }} />
+                                        <h4 className="font-display font-bold text-sm text-white">
+                                          Renew / Extend Subscription: <span className="text-energy-yellow font-sans font-semibold">{item.fullName}</span>
+                                        </h4>
+                                      </div>
+                                      
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {/* Package Selection */}
+                                        <div className="space-y-1">
+                                          <label className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block font-bold">Select Promo Package</label>
+                                          <select
+                                            value={renewTierId}
+                                            onChange={(e) => {
+                                              const selected = MEMBERSHIP_TIERS.find(t => t.id === e.target.value);
+                                              if (selected) {
+                                                setRenewTierId(selected.id);
+                                                setRenewPrice(selected.price);
+                                              }
+                                            }}
+                                            className="w-full bg-zinc-950 border border-zinc-800 text-gray-200 text-xs rounded px-3 py-2 focus:outline-none focus:border-energy-yellow focus:ring-1 focus:ring-energy-yellow cursor-pointer"
+                                          >
+                                            {MEMBERSHIP_TIERS.map(t => (
+                                              <option key={t.id} value={t.id}>
+                                                {t.name} (₱{t.price.toLocaleString()})
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+
+                                        {/* Custom Price */}
+                                        <div className="space-y-1">
+                                          <label className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block font-bold">Renewal Rate (₱)</label>
+                                          <input
+                                            type="number"
+                                            value={renewPrice}
+                                            onChange={(e) => setRenewPrice(Number(e.target.value))}
+                                            className="w-full bg-zinc-950 border border-zinc-800 text-gray-200 text-xs rounded px-3 py-2 focus:outline-none focus:border-energy-yellow focus:ring-1 focus:ring-energy-yellow"
+                                          />
+                                        </div>
+
+                                        {/* Start Date */}
+                                        <div className="space-y-1 sm:col-span-2">
+                                          <label className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block font-bold">
+                                            Subscription Start Date
+                                          </label>
+                                          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                                            <input
+                                              type="date"
+                                              value={renewStartDate}
+                                              onChange={(e) => setRenewStartDate(e.target.value)}
+                                              className="bg-zinc-950 border border-zinc-800 text-gray-200 text-xs rounded px-3 py-2 focus:outline-none focus:border-energy-yellow focus:ring-1 focus:ring-energy-yellow flex-grow"
+                                            />
+                                            <div className="flex gap-1">
+                                              <button
+                                                type="button"
+                                                onClick={() => setRenewStartDate(toLocalDateString(new Date()))}
+                                                className="bg-zinc-800 hover:bg-zinc-700 text-gray-300 px-3 py-2 rounded text-[10px] font-mono font-bold uppercase cursor-pointer transition-colors"
+                                              >
+                                                Today
+                                              </button>
+                                              {(() => {
+                                                if (details.isActive && details.formattedEnd !== 'N/A') {
+                                                  const start = item.startDate ? new Date(item.startDate) : new Date(item.createdAt);
+                                                  let monthsToAdd = 1;
+                                                  if (item.tierId === '12month') monthsToAdd = 12;
+                                                  else if (item.tierId === '6month') monthsToAdd = 6;
+                                                  else if (item.tierId === '3month') monthsToAdd = 3;
+                                                  else if (item.tierId === 'monthly') monthsToAdd = 1;
+
+                                                  const end = new Date(start);
+                                                  end.setMonth(end.getMonth() + monthsToAdd);
+                                                  const expiryDateStr = toLocalDateString(end);
+
+                                                  return (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => setRenewStartDate(expiryDateStr)}
+                                                      className="bg-zinc-800 hover:bg-zinc-700 text-energy-yellow border border-energy-yellow/20 px-3 py-2 rounded text-[10px] font-mono font-bold uppercase cursor-pointer transition-colors"
+                                                      title="Extend from current expiration date"
+                                                    >
+                                                      Chain from Expiry ({details.formattedEnd})
+                                                    </button>
+                                                  );
+                                                }
+                                                return null;
+                                              })()}
+                                            </div>
+                                          </div>
+                                          <p className="text-[10px] text-gray-500 font-sans leading-relaxed pt-1">
+                                            Pro-Tip: Choosing <strong className="text-energy-yellow">Chain from Expiry</strong> will automatically queue the extension without any gap in their workout log.
+                                          </p>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
+                                        <button
+                                          type="button"
+                                          onClick={() => setRenewingSignupId(null)}
+                                          className="px-3 py-2 rounded bg-zinc-800 hover:bg-zinc-750 text-gray-400 font-mono text-[10px] font-bold uppercase transition-all cursor-pointer"
+                                        >
+                                          Cancel
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const selected = MEMBERSHIP_TIERS.find(t => t.id === renewTierId);
+                                            if (selected) {
+                                              const isoDate = new Date(renewStartDate + 'T00:00:00').toISOString();
+                                              handleRenewSignup(item.id, renewTierId, selected.name, renewPrice, isoDate);
+                                            }
+                                          }}
+                                          className="px-4 py-2 rounded bg-energy-yellow hover:bg-amber-400 text-black font-mono text-[10px] font-bold uppercase transition-all cursor-pointer flex items-center gap-1 shadow-md shadow-amber-950/20"
+                                        >
+                                          <RotateCcw className="w-3.5 h-3.5" />
+                                          <span>Apply Renewal</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
                               )}
-                            </td>
-                          </tr>
-                        ))}
+                            </Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
