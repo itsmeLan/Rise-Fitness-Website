@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { Check, Gift, CreditCard, Sparkles, Ticket, X, Calendar, User, Phone, Mail, ArrowRight } from 'lucide-react';
+import { Check, Gift, CreditCard, Sparkles, Ticket, X, Calendar, User, Phone, Mail, ArrowRight, Download } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { MEMBERSHIP_TIERS } from '../data';
@@ -90,6 +90,165 @@ export default function MembershipSection({
     }
   };
 
+  const handleDownloadPngTicket = () => {
+    if (!activeClaim) return;
+    const tierName = MEMBERSHIP_TIERS.find(t => t.id === activeClaim.tierId)?.name || 'Commitment Tier';
+    const tierPrice = MEMBERSHIP_TIERS.find(t => t.id === activeClaim.tierId)?.price || 0;
+    const dateStr = activeClaim.timestamp || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 350" width="600" height="350">
+  <defs>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E4D00A" />
+      <stop offset="100%" stop-color="#CA8A04" />
+    </linearGradient>
+  </defs>
+  <style>
+    .title { font-family: system-ui, -apple-system, sans-serif; font-weight: 800; fill: #ffffff; }
+    .gold-accent { fill: #E4D00A; font-family: monospace; font-weight: 800; }
+    .label { font-family: monospace; font-size: 11px; fill: #71717a; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+    .value { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; fill: #e4e4e7; font-weight: 600; }
+    .ticket-id { font-family: monospace; font-size: 16px; fill: #E4D00A; font-weight: 900; }
+  </style>
+  
+  <rect width="600" height="350" rx="16" fill="#09090b" stroke="#E4D00A" stroke-width="2"/>
+  
+  <path d="M 0 16 A 16 16 0 0 1 16 0 L 150 0 L 120 350 L 16 350 A 16 16 0 0 1 0 334 Z" fill="#18181b" />
+  <line x1="150" y1="0" x2="120" y2="350" stroke="#E4D00A" stroke-width="1" opacity="0.3" />
+  
+  <text x="170" y="50" class="gold-accent" font-size="10" letter-spacing="2">VIP SUMMER PASS CLAIM SECURED</text>
+  <text x="170" y="75" class="title" font-size="22">RESERVATION TICKET</text>
+  
+  <line x1="170" y1="95" x2="560" y2="95" stroke="#27272a" stroke-width="1" stroke-dasharray="4,4" />
+  
+  <text x="170" y="130" class="label">Authorized Holder</text>
+  <text x="170" y="152" class="value">${activeClaim.fullName}</text>
+  
+  <text x="170" y="200" class="label">Contact Channel</text>
+  <text x="170" y="222" class="value" font-size="12">${activeClaim.email} • ${activeClaim.phone}</text>
+  
+  <text x="170" y="270" class="label">Target Package Tier</text>
+  <text x="170" y="292" class="value" fill="#E4D00A">${tierName} — ₱${tierPrice.toLocaleString()}</text>
+  
+  <text x="25" y="115" class="label" fill="#a1a1aa">TICKET CODE</text>
+  <rect x="20" y="130" width="105" height="40" rx="4" fill="#000000" stroke="#27272a" stroke-width="1" />
+  <text x="72.5" y="155" class="ticket-id" text-anchor="middle">${activeClaim.ticketId}</text>
+  
+  <text x="25" y="220" font-family="monospace" font-size="9" fill="#71717a" font-weight="bold">VALID AT</text>
+  <text x="25" y="235" font-family="system-ui, sans-serif" font-size="11" fill="#ffffff" font-weight="bold">SALINAS DRIVE</text>
+  <text x="25" y="248" font-family="system-ui, sans-serif" font-size="10" fill="#E4D00A" font-weight="bold">LAHUG, CEBU</text>
+  
+  <circle cx="72.5" cy="295" r="15" fill="none" stroke="#E4D00A" stroke-width="1.5" opacity="0.4" />
+  <text x="72.5" y="299" font-family="system-ui, sans-serif" font-size="9" fill="#E4D00A" font-weight="900" text-anchor="middle" opacity="0.6">RISE</text>
+  
+  <rect x="420" y="115" width="140" height="48" rx="6" fill="#18181b" stroke="#E4D00A" stroke-width="1" opacity="0.1" />
+  <rect x="420" y="115" width="140" height="48" rx="6" fill="none" stroke="#e4d00a" stroke-width="1" stroke-dasharray="3,3" opacity="0.6" />
+  <text x="490" y="135" font-family="system-ui, sans-serif" font-size="9" fill="#E4D00A" font-weight="bold" text-anchor="middle">RISE FITNESS</text>
+  <text x="490" y="148" font-family="system-ui, sans-serif" font-size="8" fill="#a1a1aa" text-anchor="middle">SUMMER PROMO</text>
+</svg>`;
+
+    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1200;
+      canvas.height = 700;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#09090b';
+        ctx.fillRect(0, 0, 1200, 700);
+        ctx.drawImage(img, 0, 0, 1200, 700);
+        try {
+          const pngUrl = canvas.toDataURL('image/png');
+          const link = document.createElement('a');
+          link.href = pngUrl;
+          link.download = `Rise_Fitness_VIP_Pass_${activeClaim.ticketId}.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } catch (e) {
+          const svgLink = document.createElement('a');
+          svgLink.href = url;
+          svgLink.download = `Rise_Fitness_VIP_Pass_${activeClaim.ticketId}.svg`;
+          document.body.appendChild(svgLink);
+          svgLink.click();
+          document.body.removeChild(svgLink);
+        }
+      }
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  };
+
+  const handleDownloadSvgTicket = () => {
+    if (!activeClaim) return;
+    const tierName = MEMBERSHIP_TIERS.find(t => t.id === activeClaim.tierId)?.name || 'Commitment Tier';
+    const tierPrice = MEMBERSHIP_TIERS.find(t => t.id === activeClaim.tierId)?.price || 0;
+    const dateStr = activeClaim.timestamp || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 350" width="600" height="350">
+  <defs>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E4D00A" />
+      <stop offset="100%" stop-color="#CA8A04" />
+    </linearGradient>
+  </defs>
+  <style>
+    .title { font-family: system-ui, -apple-system, sans-serif; font-weight: 800; fill: #ffffff; }
+    .gold-accent { fill: #E4D00A; font-family: monospace; font-weight: 800; }
+    .label { font-family: monospace; font-size: 11px; fill: #71717a; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+    .value { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; fill: #e4e4e7; font-weight: 600; }
+    .ticket-id { font-family: monospace; font-size: 16px; fill: #E4D00A; font-weight: 900; }
+  </style>
+  
+  <rect width="600" height="350" rx="16" fill="#09090b" stroke="#E4D00A" stroke-width="2"/>
+  
+  <path d="M 0 16 A 16 16 0 0 1 16 0 L 150 0 L 120 350 L 16 350 A 16 16 0 0 1 0 334 Z" fill="#18181b" />
+  <line x1="150" y1="0" x2="120" y2="350" stroke="#E4D00A" stroke-width="1" opacity="0.3" />
+  
+  <text x="170" y="50" class="gold-accent" font-size="10" letter-spacing="2">VIP SUMMER PASS CLAIM SECURED</text>
+  <text x="170" y="75" class="title" font-size="22">RESERVATION TICKET</text>
+  
+  <line x1="170" y1="95" x2="560" y2="95" stroke="#27272a" stroke-width="1" stroke-dasharray="4,4" />
+  
+  <text x="170" y="130" class="label">Authorized Holder</text>
+  <text x="170" y="152" class="value">${activeClaim.fullName}</text>
+  
+  <text x="170" y="200" class="label">Contact Channel</text>
+  <text x="170" y="222" class="value" font-size="12">${activeClaim.email} • ${activeClaim.phone}</text>
+  
+  <text x="170" y="270" class="label">Target Package Tier</text>
+  <text x="170" y="292" class="value" fill="#E4D00A">${tierName} — ₱${tierPrice.toLocaleString()}</text>
+  
+  <text x="25" y="115" class="label" fill="#a1a1aa">TICKET CODE</text>
+  <rect x="20" y="130" width="105" height="40" rx="4" fill="#000000" stroke="#27272a" stroke-width="1" />
+  <text x="72.5" y="155" class="ticket-id" text-anchor="middle">${activeClaim.ticketId}</text>
+  
+  <text x="25" y="220" font-family="monospace" font-size="9" fill="#71717a" font-weight="bold">VALID AT</text>
+  <text x="25" y="235" font-family="system-ui, sans-serif" font-size="11" fill="#ffffff" font-weight="bold">SALINAS DRIVE</text>
+  <text x="25" y="248" font-family="system-ui, sans-serif" font-size="10" fill="#E4D00A" font-weight="bold">LAHUG, CEBU</text>
+  
+  <circle cx="72.5" cy="295" r="15" fill="none" stroke="#E4D00A" stroke-width="1.5" opacity="0.4" />
+  <text x="72.5" y="299" font-family="system-ui, sans-serif" font-size="9" fill="#E4D00A" font-weight="900" text-anchor="middle" opacity="0.6">RISE</text>
+  
+  <rect x="420" y="115" width="140" height="48" rx="6" fill="#18181b" stroke="#E4D00A" stroke-width="1" opacity="0.1" />
+  <rect x="420" y="115" width="140" height="48" rx="6" fill="none" stroke="#e4d00a" stroke-width="1" stroke-dasharray="3,3" opacity="0.6" />
+  <text x="490" y="135" font-family="system-ui, sans-serif" font-size="9" fill="#E4D00A" font-weight="bold" text-anchor="middle">RISE FITNESS</text>
+  <text x="490" y="148" font-family="system-ui, sans-serif" font-size="8" fill="#a1a1aa" text-anchor="middle">SUMMER PROMO</text>
+</svg>`;
+
+    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Rise_Fitness_VIP_Pass_${activeClaim.ticketId}.svg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <section id="membership" className="py-24 bg-zinc-950 border-t border-zinc-900 relative">
       <div className="absolute left-0 bottom-0 w-80 h-80 bg-gold-600/5 rounded-full blur-[120px] pointer-events-none"></div>
@@ -102,7 +261,7 @@ export default function MembershipSection({
             <span>⚠️ First 20 Slots Only!</span>
           </div>
           <h2 className="font-display font-bold text-4xl sm:text-5xl md:text-6xl text-white tracking-tight">
-            🔥 MID-YEAR 2026 PROMO 🔥
+            🔥MID-YEAR 2026 PROMO🔥
           </h2>
           <p className="font-sans text-gray-300 text-sm sm:text-base leading-relaxed">
             Commit to your peak physical performance and secure elite level equipment, complimentary dry-saunas, and Cebu's best fitness group community right on Salinas Drive Lahug!
@@ -269,7 +428,27 @@ export default function MembershipSection({
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-dashed border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+            {/* DOWNLOAD TICKET ACTIONS */}
+            <div className="mt-6 pt-4 border-t border-zinc-850 flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={handleDownloadSvgTicket}
+                className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-energy-yellow to-gold-600 hover:from-gold-300 hover:to-energy-yellow text-black font-display font-bold text-[10px] uppercase tracking-wider px-4 py-2.5 rounded shadow-gold-heavy/20 transition-all duration-200 cursor-pointer w-full sm:w-auto"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download Vector Pass (.SVG)
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadPngTicket}
+                className="flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-zinc-850 text-gray-300 border border-zinc-800 hover:border-zinc-700 font-display font-bold text-[10px] uppercase tracking-wider px-4 py-2.5 rounded transition-all duration-200 cursor-pointer w-full sm:w-auto"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download as Image (.PNG)
+              </button>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-dashed border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between gap-4">
               <p className="font-sans text-[11px] text-gray-400">
                 ★ Present this ticket code to our front counter at Salinas Drive to claim your welcome dri-fit shirt and get your access card processed.
               </p>
